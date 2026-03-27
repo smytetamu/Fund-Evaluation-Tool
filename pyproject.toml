@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fund-evaluation-tool"
+version = "0.1.0"
+description = "MVP tool for evaluating and comparing investment funds"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "streamlit>=1.32",
+    "pandas>=2.0",
+    "numpy>=1.26",
+    "sqlalchemy>=2.0",
+    "openpyxl>=3.1",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov",
+    "ruff",
+    "mypy",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fund_evaluation_tool"]
+
+[tool.ruff]
+line-length = 100
+src = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

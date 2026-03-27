@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.egg
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment
+.env
+.env.*
+
+# Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data / uploads (don't commit raw fund data)
+data/
+uploads/
+*.xlsx
+*.csv
+!tests/fixtures/*.csv
+!tests/fixtures/*.xlsx
