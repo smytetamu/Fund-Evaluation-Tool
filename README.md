@@ -27,7 +27,8 @@ The app opens at http://localhost:8501.
 2. Compute core performance metrics automatically
 3. Filter by scenario window where supported
 4. Display results in formatted tables
-5. Export results to Excel
+5. Select a benchmark column for comparison metrics when desired
+6. Export results to Excel
 
 ## Accepted input shapes
 
@@ -73,6 +74,17 @@ Current repo includes support for:
 - benchmark-relative comparison metrics
 - partial-year aware annual CAGR utilities
 - IPS compliance helper
+
+## Benchmark comparison metrics
+
+When a benchmark column is selected, the app computes:
+- benchmark annualised return
+- excess return
+- tracking error
+- information ratio
+- beta
+- alpha
+- correlation
 
 ## Stack
 

@@ -5,6 +5,7 @@ import io
 import pandas as pd
 import streamlit as st
 
+from fund_evaluation_tool.benchmark import compute_benchmark_comparison
 from fund_evaluation_tool.export import export_to_excel
 from fund_evaluation_tool.ingestion import load_fund_data
 from fund_evaluation_tool.metrics import compute_metrics
@@ -29,13 +30,24 @@ uploaded = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
 if uploaded:
     # Pass the UploadedFile directly — loader now handles file-like objects
     df = load_fund_data(uploaded)
-    st.success(f"Loaded {len(df)} rows, {len(df.select_dtypes('number').columns)} fund(s).")
+    numeric_cols = df.select_dtypes("number").columns.tolist()
+    st.success(f"Loaded {len(df)} rows, {len(numeric_cols)} fund(s).")
     st.dataframe(df.head(20))
 
+    # ── Benchmark selection ───────────────────────────────────────────────────
+    st.header("2. Benchmark (optional)")
+    benchmark_options = ["None"] + numeric_cols
+    benchmark_col = st.selectbox(
+        "Select a column to use as benchmark",
+        options=benchmark_options,
+        help="The selected column will be used as the benchmark for comparison. "
+             "It will still appear in the metrics table.",
+    )
+    use_benchmark = benchmark_col != "None"
+
     # ── Metrics ───────────────────────────────────────────────────────────────
-    st.header("2. Metrics")
+    st.header("3. Metrics")
     all_metrics: dict[str, dict] = {}
-    numeric_cols = df.select_dtypes("number").columns.tolist()
 
     if not numeric_cols:
         st.warning("No numeric columns found. Check that your file has return data.")
@@ -43,14 +55,11 @@ if uploaded:
         for col in numeric_cols:
             series = df[col].dropna()
             m = compute_metrics(series, risk_free_rate=risk_free)
-            scenario_m = run_scenario(series, scenario=scenario)
-            # Show full-period metrics; scenario info available in tooltip / future tab
+            run_scenario(series, scenario=scenario)
             all_metrics[col] = m
 
         metrics_df = pd.DataFrame(all_metrics).T
         metrics_df.index.name = "Fund"
-
-        # Friendly column labels
         metrics_df.columns = [c.replace("_", " ").title() for c in metrics_df.columns]
 
         st.dataframe(
@@ -62,31 +71,54 @@ if uploaded:
             st.caption(f"⚠️ Scenario filter **{scenario}** applied to scenario calc only. "
                        "Table above shows full-period metrics.")
 
-        # ── Export ────────────────────────────────────────────────────────────
-        st.header("3. Export")
+    # ── Benchmark comparison ──────────────────────────────────────────────────
+    benchmark_comparison_df = None
+    if use_benchmark and numeric_cols:
+        st.header("4. Benchmark Comparison")
+        st.caption(f"Benchmark: **{benchmark_col}**")
 
-        # Build Excel in-memory so we don't touch the filesystem
-        excel_buf = io.BytesIO()
-        export_to_excel(all_metrics, excel_buf)
-        excel_buf.seek(0)
+        benchmark_comparison_df = compute_benchmark_comparison(df, benchmark_col)
 
-        st.download_button(
-            label="📥 Download Excel Report",
-            data=excel_buf,
-            file_name="fund_report.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        display_df = benchmark_comparison_df.copy()
+        display_df.columns = [c.replace("_", " ").title() for c in display_df.columns]
+
+        st.dataframe(
+            display_df.style.format("{:.4f}"),
+            use_container_width=True,
         )
+        st.caption(
+            "**Excess Return** = fund annualised return − benchmark annualised return. "
+            "**Tracking Error** = annualised std of monthly return differences. "
+            "**Information Ratio** = excess return / tracking error. "
+            "**Alpha** = Jensen-style annualised alpha."
+        )
+
+    # ── Export ────────────────────────────────────────────────────────────────
+    export_header = "5. Export" if use_benchmark else "4. Export"
+    st.header(export_header)
+
+    excel_buf = io.BytesIO()
+    export_to_excel(all_metrics, excel_buf, benchmark_df=benchmark_comparison_df)
+    excel_buf.seek(0)
+
+    st.download_button(
+        label="📥 Download Excel Report",
+        data=excel_buf,
+        file_name="fund_report.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 else:
     st.info("Upload a CSV or Excel file to get started.")
     with st.expander("Expected file format"):
         st.markdown("""
-| date       | FundA | FundB |
-|------------|-------|-------|
-| 2020-01-31 | 0.012 | -0.005 |
-| 2020-02-29 | -0.032| -0.081 |
-| ...        | ...   | ...   |
+| date       | FundA | FundB | Benchmark |
+|------------|-------|-------|-----------|
+| 2020-01-31 | 0.012 | -0.005 | 0.008 |
+| 2020-02-29 | -0.032| -0.081 | -0.040 |
+| ...        | ...   | ...   | ... |
 
 - `date` column is required (any parseable date format)
 - Each additional column = one fund's **monthly returns** (as decimals)
+- Select any column as **benchmark** to get relative comparison metrics
 - Missing values are dropped automatically
         """)
