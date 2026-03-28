@@ -1,37 +1,28 @@
-"""Scenario runner — apply shocks or slices to a return series."""
+"""Scenario runner — filter a return series to a date sub-range."""
 
 import pandas as pd
 
-from fund_evaluation_tool.metrics import compute_metrics
+SCENARIOS = {
+    "full": (None, None),
+    "crisis_2008": ("2007-01-01", "2009-12-31"),
+    "covid_2020": ("2020-01-01", "2020-12-31"),
+}
 
 
-def run_scenario(
-    returns: pd.Series,
-    scenario: str = "full",
-    shock: float = 0.0,
-) -> dict:
-    """Run a named scenario on a return series.
+def run_scenario(returns: pd.Series, scenario: str = "full") -> pd.Series:
+    """Slice a return series to the given scenario window.
 
     Args:
-        returns: Full return series.
-        scenario: One of 'full', 'crisis_2008', 'covid_2020', or 'custom'.
-        shock: Additional return shock applied to every period (default 0).
+        returns: Monthly return series with a DatetimeIndex.
+        scenario: One of 'full', 'crisis_2008', 'covid_2020'.
 
     Returns:
-        Metrics dict for the scenario.
+        Sliced return series (may be empty if dates don't overlap).
     """
-    SLICES = {
-        "crisis_2008": ("2008-01", "2009-03"),
-        "covid_2020": ("2020-02", "2020-12"),
-    }
+    if scenario not in SCENARIOS:
+        raise ValueError(f"Unknown scenario '{scenario}'. Valid: {list(SCENARIOS)}")
 
-    if scenario in SLICES:
-        start, end = SLICES[scenario]
-        series = returns.loc[start:end]
-    else:
-        series = returns.copy()
-
-    if shock:
-        series = series + shock
-
-    return compute_metrics(series)
+    start, end = SCENARIOS[scenario]
+    if start is None:
+        return returns
+    return returns.loc[start:end]

@@ -6,18 +6,10 @@ A Streamlit-based MVP for evaluating and comparing investment funds.
 
 This tool allows users to:
 - ingest fund data from CSV/Excel files
-- calculate metrics (returns, volatility, Sharpe ratio, drawdown, etc.)
-- run scenarios (stress tests, benchmark comparisons)
+- calculate metrics (returns, volatility, Sharpe ratio, drawdown, benchmark comparison, etc.)
+- run basic scenario filters
 - export results to Excel reports
-- persist data via a local SQLite database
-
-## Stack
-
-- Python 3.11+
-- Streamlit (UI)
-- Pandas / NumPy (data processing)
-- SQLite via SQLAlchemy (persistence)
-- openpyxl (Excel export)
+- support both MVP monthly inputs and legacy annual long-format inputs
 
 ## Quickstart
 
@@ -27,19 +19,90 @@ uv pip install -e '.[dev]'
 uv run streamlit run app/main.py
 ```
 
-## Project Structure
+The app opens at http://localhost:8501.
+
+## What it does
+
+1. Upload a CSV or Excel file with fund returns
+2. Compute core performance metrics automatically
+3. Filter by scenario window where supported
+4. Display results in formatted tables
+5. Export results to Excel
+
+## Accepted input shapes
+
+### Monthly wide format
+
+```csv
+date,Fund_A,Fund_B,Fund_C
+2020-01-31,0.012,-0.005,0.003
+2020-02-29,-0.034,0.008,-0.012
+```
+
+- `date` is required
+- each additional column is one fund
+- values are decimal returns (`0.01 = 1%`)
+
+### Legacy annual long format
+
+Supported columns:
+- `Fund` required
+- `Year` required
+- `Fund_Return` required
+- `SPX_Return` optional
+- `Is_Partial_Year` optional
+- `Months_In_Period` optional
+
+A realistic legacy fixture is at:
+- `tests/fixtures/legacy_annual_returns.csv`
+
+A sample monthly file is at:
+- `tests/fixtures/sample_returns.csv`
+
+## Metrics available
+
+Current repo includes support for:
+- total return
+- annualised return / CAGR
+- annualised volatility
+- Sharpe ratio
+- max drawdown
+- Calmar ratio
+- downside deviation
+- Sortino ratio
+- benchmark-relative comparison metrics
+- partial-year aware annual CAGR utilities
+- IPS compliance helper
+
+## Stack
+
+- Python 3.11+
+- Streamlit
+- Pandas / NumPy
+- openpyxl
+- SQLite via SQLAlchemy
+
+## Project structure
 
 ```text
-src/fund_evaluation_tool/
-  ingestion/    # data loading & parsing
-  metrics/      # performance metric calculations
-  scenarios/    # scenario & stress-test logic
-  export/       # Excel/report generation
-  db/           # database models & session management
 app/
-  main.py       # Streamlit entrypoint
-tests/          # pytest test suite
-docs/           # documentation & references
+  main.py
+src/fund_evaluation_tool/
+  benchmark/
+  db/
+  export/
+  ingestion/
+  metrics/
+  scenarios/
+tests/
+  fixtures/
+docs/
+```
+
+## Running tests
+
+```bash
+uv run pytest -q
 ```
 
 ## Status
