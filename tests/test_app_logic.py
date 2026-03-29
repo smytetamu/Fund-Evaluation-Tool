@@ -29,3 +29,6 @@ def test_build_legacy_analysis_includes_ips_and_spx_comparison():
     assert result["benchmark_comparison_df"] is not None
     assert "excess_cagr" in result["benchmark_comparison_df"].columns
     assert "fund_ips_compliant" in result["benchmark_comparison_df"].columns
+    assert result["raw_data_df"] is not None
+    assert {"Fund", "Year", "Fund_Return", "SPX_Return"}.issubset(result["raw_data_df"].columns)
+    assert result["assumptions"]["cpi"] == 0.03

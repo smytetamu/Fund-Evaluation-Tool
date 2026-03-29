@@ -47,6 +47,16 @@ def build_legacy_analysis(
     returns_wide, benchmark_wide, meta = load_legacy_annual(source)
 
     benchmark_series = benchmark_wide["SPX"] if "SPX" in benchmark_wide.columns else None
+    raw_data_df = meta.copy()
+    raw_data_df["Fund_Return"] = [
+        returns_wide.loc[pd.Timestamp(f"{int(year)}-12-31"), fund]
+        for fund, year in zip(meta["Fund"], meta["Year"], strict=False)
+    ]
+    if benchmark_series is not None:
+        raw_data_df["SPX_Return"] = [
+            benchmark_series.loc[pd.Timestamp(f"{int(year)}-12-31")]
+            for year in meta["Year"]
+        ]
     all_metrics: dict[str, dict[str, Any]] = {}
     comparison_rows: dict[str, dict[str, Any]] = {}
 
@@ -85,8 +95,15 @@ def build_legacy_analysis(
 
     return {
         "returns_df": returns_wide.join(benchmark_wide, how="left") if not benchmark_wide.empty else returns_wide,
+        "raw_data_df": raw_data_df,
         "all_metrics": all_metrics,
         "benchmark_comparison_df": pd.DataFrame(comparison_rows).T if comparison_rows else None,
+        "assumptions": {
+            "cpi": 0.03,
+            "risk_free_rate": risk_free_rate,
+            "mar": 0.0,
+            "ips_target_spread": 0.06,
+        },
         "has_spx": benchmark_series is not None,
         "fund_count": len(returns_wide.columns),
         "row_count": len(returns_wide),

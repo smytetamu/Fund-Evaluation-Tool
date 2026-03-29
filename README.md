@@ -9,6 +9,7 @@ This tool allows users to:
 - calculate metrics (returns, volatility, Sharpe ratio, drawdown, benchmark comparison, etc.)
 - run basic scenario filters
 - export results to Excel reports
+- generate a legacy annual workbook with Comparison, Raw Data, and Assumptions sheets
 - support both MVP monthly inputs and legacy annual long-format inputs
 
 ## Quickstart
@@ -62,6 +63,11 @@ Supported columns:
 - `Months_In_Period` optional
 
 The Streamlit UI now auto-detects this schema by column names, routes it through the legacy loader, computes annual metrics per fund, surfaces IPS compliance, and shows a dedicated fund-vs-SPX comparison table when `SPX_Return` is present.
+
+Legacy annual exports now generate a workbook-oriented report:
+- `Comparison` sheet with fund vs SPX annual comparison fields and IPS pass/fail flags
+- `Raw Data` sheet with the annual rows used in the analysis
+- `Assumptions` sheet with current CPI / risk-free / MAR / IPS spread placeholders
 
 Fixtures:
 - `tests/fixtures/sample_returns.csv`

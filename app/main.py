@@ -11,7 +11,7 @@ from fund_evaluation_tool.app_logic import (
     detect_input_format,
     read_uploaded_frame,
 )
-from fund_evaluation_tool.export import export_to_excel
+from fund_evaluation_tool.export import export_legacy_report_to_excel, export_to_excel
 from fund_evaluation_tool.ingestion import load_fund_data
 from fund_evaluation_tool.metrics import compute_metrics
 from fund_evaluation_tool.scenarios import run_scenario
@@ -41,6 +41,9 @@ if uploaded:
     input_format = detect_input_format(preview_df.columns)
 
     benchmark_comparison_df = None
+    raw_data_df = None
+    legacy_assumptions = None
+    export_file_name = "fund_report.xlsx"
 
     if input_format == "legacy_annual":
         legacy_buffer = io.BytesIO(uploaded_bytes)
@@ -50,6 +53,9 @@ if uploaded:
         all_metrics = legacy_result["all_metrics"]
         benchmark_comparison_df = legacy_result["benchmark_comparison_df"]
         numeric_cols = [c for c in df.select_dtypes("number").columns.tolist() if c != "SPX"]
+        raw_data_df = legacy_result["raw_data_df"]
+        legacy_assumptions = legacy_result["assumptions"]
+        export_file_name = "fund_legacy_report.xlsx"
 
         st.success(
             f"Detected legacy annual format. Loaded {legacy_result['row_count']} annual rows, "
@@ -154,13 +160,22 @@ if uploaded:
     st.header(export_header)
 
     excel_buf = io.BytesIO()
-    export_to_excel(all_metrics, excel_buf, benchmark_df=benchmark_comparison_df)
+    if input_format == "legacy_annual":
+        export_legacy_report_to_excel(
+            all_metrics,
+            raw_data_df=raw_data_df if raw_data_df is not None else pd.DataFrame(),
+            output=excel_buf,
+            comparison_df=benchmark_comparison_df,
+            assumptions=legacy_assumptions,
+        )
+    else:
+        export_to_excel(all_metrics, excel_buf, benchmark_df=benchmark_comparison_df)
     excel_buf.seek(0)
 
     st.download_button(
         label="📥 Download Excel Report",
         data=excel_buf,
-        file_name="fund_report.xlsx",
+        file_name=export_file_name,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 else:
