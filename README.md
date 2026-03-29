@@ -69,18 +69,40 @@ Fixtures:
 
 ## Metrics available
 
-Current repo includes support for:
+### Monthly return series (`compute_metrics`)
+
 - total return
-- annualised return / CAGR
+- annualised return
 - annualised volatility
 - Sharpe ratio
 - max drawdown
 - Calmar ratio
+- number of periods
+
+### Annual return series (`compute_annual_metrics`)
+
+- CAGR
+- arithmetic mean return
+- annual volatility
+- Sharpe ratio
 - downside deviation
 - Sortino ratio
-- benchmark-relative comparison metrics
+- max drawdown
+- Calmar ratio
+- ending value
+- IPS target
+- IPS compliance
+- IPS delta
+- benchmark-prefixed comparison metrics via aligned annual series
 - partial-year aware annual CAGR utilities
-- IPS compliance helper
+
+Defaults currently assumed in annual calculations:
+- MAR = 0.0
+- CPI = 3.0%
+- target spread = 6.0%
+- risk-free rate = 0.0
+
+These defaults must be confirmed against the workbook Inputs sheet before being treated as production values.
 
 ## Benchmark comparison metrics
 
