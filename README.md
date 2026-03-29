@@ -24,10 +24,10 @@ The app opens at http://localhost:8501.
 ## What it does
 
 1. Upload a CSV or Excel file with fund returns
-2. Compute core performance metrics automatically
-3. Filter by scenario window where supported
-4. Display results in formatted tables
-5. Select a benchmark column for comparison metrics when desired
+2. Auto-detect monthly wide vs legacy annual long format uploads
+3. Compute the matching metric set automatically
+4. Filter by scenario window where supported for monthly uploads
+5. Display formatted fund metrics and benchmark/SPX comparison tables
 6. Export results to Excel
 
 ## Accepted input shapes
@@ -61,7 +61,7 @@ Supported columns:
 - `Is_Partial_Year` optional
 - `Months_In_Period` optional
 
-The legacy loader normalizes this into a wide-format DataFrame with a year-end DatetimeIndex and preserves `SPX` where present.
+The Streamlit UI now auto-detects this schema by column names, routes it through the legacy loader, computes annual metrics per fund, surfaces IPS compliance, and shows a dedicated fund-vs-SPX comparison table when `SPX_Return` is present.
 
 Fixtures:
 - `tests/fixtures/sample_returns.csv`

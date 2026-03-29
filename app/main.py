@@ -5,7 +5,12 @@ import io
 import pandas as pd
 import streamlit as st
 
-from fund_evaluation_tool.benchmark import compute_benchmark_comparison
+from fund_evaluation_tool.app_logic import (
+    build_legacy_analysis,
+    build_monthly_benchmark_analysis,
+    detect_input_format,
+    read_uploaded_frame,
+)
 from fund_evaluation_tool.export import export_to_excel
 from fund_evaluation_tool.ingestion import load_fund_data
 from fund_evaluation_tool.metrics import compute_metrics
@@ -28,73 +33,124 @@ st.caption("CSV with a `date` column + one numeric column per fund (monthly retu
 uploaded = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
 
 if uploaded:
-    # Pass the UploadedFile directly — loader now handles file-like objects
-    df = load_fund_data(uploaded)
-    numeric_cols = df.select_dtypes("number").columns.tolist()
-    st.success(f"Loaded {len(df)} rows, {len(numeric_cols)} fund(s).")
-    st.dataframe(df.head(20))
+    uploaded_bytes = uploaded.getvalue()
 
-    # ── Benchmark selection ───────────────────────────────────────────────────
-    st.header("2. Benchmark (optional)")
-    benchmark_options = ["None"] + numeric_cols
-    benchmark_col = st.selectbox(
-        "Select a column to use as benchmark",
-        options=benchmark_options,
-        help="The selected column will be used as the benchmark for comparison. "
-             "It will still appear in the metrics table.",
-    )
-    use_benchmark = benchmark_col != "None"
+    preview_buffer = io.BytesIO(uploaded_bytes)
+    preview_buffer.name = uploaded.name
+    preview_df = read_uploaded_frame(preview_buffer)
+    input_format = detect_input_format(preview_df.columns)
 
-    # ── Metrics ───────────────────────────────────────────────────────────────
-    st.header("3. Metrics")
-    all_metrics: dict[str, dict] = {}
-
-    if not numeric_cols:
-        st.warning("No numeric columns found. Check that your file has return data.")
-    else:
-        for col in numeric_cols:
-            series = df[col].dropna()
-            m = compute_metrics(series, risk_free_rate=risk_free)
-            run_scenario(series, scenario=scenario)
-            all_metrics[col] = m
-
-        metrics_df = pd.DataFrame(all_metrics).T
-        metrics_df.index.name = "Fund"
-        metrics_df.columns = [c.replace("_", " ").title() for c in metrics_df.columns]
-
-        st.dataframe(
-            metrics_df.style.format("{:.4f}"),
-            use_container_width=True,
-        )
-
-        if scenario != "full":
-            st.caption(f"⚠️ Scenario filter **{scenario}** applied to scenario calc only. "
-                       "Table above shows full-period metrics.")
-
-    # ── Benchmark comparison ──────────────────────────────────────────────────
     benchmark_comparison_df = None
-    if use_benchmark and numeric_cols:
-        st.header("4. Benchmark Comparison")
-        st.caption(f"Benchmark: **{benchmark_col}**")
 
-        benchmark_comparison_df = compute_benchmark_comparison(df, benchmark_col)
+    if input_format == "legacy_annual":
+        legacy_buffer = io.BytesIO(uploaded_bytes)
+        legacy_buffer.name = uploaded.name
+        legacy_result = build_legacy_analysis(legacy_buffer, risk_free_rate=risk_free)
+        df = legacy_result["returns_df"]
+        all_metrics = legacy_result["all_metrics"]
+        benchmark_comparison_df = legacy_result["benchmark_comparison_df"]
+        numeric_cols = [c for c in df.select_dtypes("number").columns.tolist() if c != "SPX"]
 
-        display_df = benchmark_comparison_df.copy()
-        display_df.columns = [c.replace("_", " ").title() for c in display_df.columns]
-
-        st.dataframe(
-            display_df.style.format("{:.4f}"),
-            use_container_width=True,
+        st.success(
+            f"Detected legacy annual format. Loaded {legacy_result['row_count']} annual rows, "
+            f"{legacy_result['fund_count']} fund(s)."
         )
-        st.caption(
-            "**Excess Return** = fund annualised return − benchmark annualised return. "
-            "**Tracking Error** = annualised std of monthly return differences. "
-            "**Information Ratio** = excess return / tracking error. "
-            "**Alpha** = Jensen-style annualised alpha."
+        st.caption("Legacy annual uploads are analysed with annual metrics. Monthly scenario filters do not apply.")
+        st.dataframe(df.head(20))
+
+        st.header("2. Annual Metrics")
+        if not numeric_cols:
+            st.warning("No fund return columns found in the legacy upload.")
+        else:
+            metrics_df = pd.DataFrame(all_metrics).T
+            metrics_df.index.name = "Fund"
+            metrics_df.columns = [c.replace("_", " ").title() for c in metrics_df.columns]
+            st.dataframe(metrics_df, use_container_width=True)
+
+            if "Ips Compliant" in metrics_df.columns:
+                ips_df = metrics_df[[c for c in ["Cagr", "Ips Target", "Ips Delta", "Ips Compliant"] if c in metrics_df.columns]].copy()
+                st.subheader("IPS Compliance")
+                st.dataframe(ips_df, use_container_width=True)
+
+        if legacy_result["has_spx"] and benchmark_comparison_df is not None and not benchmark_comparison_df.empty:
+            st.header("3. Fund vs SPX")
+            display_df = benchmark_comparison_df.copy()
+            display_df.index.name = "Fund"
+            display_df.columns = [c.replace("_", " ").title() for c in display_df.columns]
+            st.dataframe(display_df, use_container_width=True)
+            st.caption("Annual comparison aligns each fund with the shared SPX annual series and highlights CAGR, excess CAGR, and IPS flags.")
+
+        export_header = "4. Export" if legacy_result["has_spx"] else "3. Export"
+    else:
+        # Pass the UploadedFile directly — loader now handles file-like objects
+        monthly_buffer = io.BytesIO(uploaded_bytes)
+        monthly_buffer.name = uploaded.name
+        df = load_fund_data(monthly_buffer)
+        numeric_cols = df.select_dtypes("number").columns.tolist()
+        st.success(f"Loaded {len(df)} rows, {len(numeric_cols)} fund(s).")
+        st.dataframe(df.head(20))
+
+        # ── Benchmark selection ───────────────────────────────────────────────
+        st.header("2. Benchmark (optional)")
+        benchmark_options = ["None"] + numeric_cols
+        benchmark_col = st.selectbox(
+            "Select a column to use as benchmark",
+            options=benchmark_options,
+            help="The selected column will be used as the benchmark for comparison. "
+                 "It will still appear in the metrics table.",
         )
+        use_benchmark = benchmark_col != "None"
+
+        # ── Metrics ───────────────────────────────────────────────────────────
+        st.header("3. Metrics")
+        all_metrics: dict[str, dict] = {}
+
+        if not numeric_cols:
+            st.warning("No numeric columns found. Check that your file has return data.")
+        else:
+            for col in numeric_cols:
+                series = df[col].dropna()
+                m = compute_metrics(series, risk_free_rate=risk_free)
+                run_scenario(series, scenario=scenario)
+                all_metrics[col] = m
+
+            metrics_df = pd.DataFrame(all_metrics).T
+            metrics_df.index.name = "Fund"
+            metrics_df.columns = [c.replace("_", " ").title() for c in metrics_df.columns]
+
+            st.dataframe(
+                metrics_df.style.format("{:.4f}"),
+                use_container_width=True,
+            )
+
+            if scenario != "full":
+                st.caption(f"⚠️ Scenario filter **{scenario}** applied to scenario calc only. "
+                           "Table above shows full-period metrics.")
+
+        # ── Benchmark comparison ──────────────────────────────────────────────
+        if use_benchmark and numeric_cols:
+            st.header("4. Benchmark Comparison")
+            st.caption(f"Benchmark: **{benchmark_col}**")
+
+            benchmark_comparison_df = build_monthly_benchmark_analysis(df, benchmark_col)
+
+            display_df = benchmark_comparison_df.copy()
+            display_df.columns = [c.replace("_", " ").title() for c in display_df.columns]
+
+            st.dataframe(
+                display_df.style.format("{:.4f}"),
+                use_container_width=True,
+            )
+            st.caption(
+                "**Excess Return** = fund annualised return − benchmark annualised return. "
+                "**Tracking Error** = annualised std of monthly return differences. "
+                "**Information Ratio** = excess return / tracking error. "
+                "**Alpha** = Jensen-style annualised alpha."
+            )
+
+        export_header = "5. Export" if use_benchmark else "4. Export"
 
     # ── Export ────────────────────────────────────────────────────────────────
-    export_header = "5. Export" if use_benchmark else "4. Export"
     st.header(export_header)
 
     excel_buf = io.BytesIO()
