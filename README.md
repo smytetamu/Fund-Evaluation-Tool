@@ -46,6 +46,13 @@ date,Fund_A,Fund_B,Fund_C
 
 ### Legacy annual long format
 
+```csv
+Fund,Year,Fund_Return,SPX_Return,Is_Partial_Year,Months_In_Period
+HCI,2021,0.223,0.287,0,12
+HCI,2022,-0.108,-0.182,0,12
+HCI,2023,0.154,0.265,1,9
+```
+
 Supported columns:
 - `Fund` required
 - `Year` required
@@ -54,11 +61,11 @@ Supported columns:
 - `Is_Partial_Year` optional
 - `Months_In_Period` optional
 
-A realistic legacy fixture is at:
-- `tests/fixtures/legacy_annual_returns.csv`
+The legacy loader normalizes this into a wide-format DataFrame with a year-end DatetimeIndex and preserves `SPX` where present.
 
-A sample monthly file is at:
+Fixtures:
 - `tests/fixtures/sample_returns.csv`
+- `tests/fixtures/legacy_annual_returns.csv`
 
 ## Metrics available
 

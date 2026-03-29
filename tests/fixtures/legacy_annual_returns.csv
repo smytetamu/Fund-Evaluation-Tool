@@ -1,0 +1,13 @@
+Fund,Year,Fund_Return,SPX_Return,Is_Partial_Year,Months_In_Period,Fee_Mode,Mgmt_Fee_%,Perf_Fee_%,Hurdle_Type,Hurdle_Value,HWM_Enabled,Source_Notes
+HCI,2018,-0.052,-0.044,0,12,Standard,0.015,0.20,Absolute,0.06,1,Audited
+HCI,2019,0.214,0.315,0,12,Standard,0.015,0.20,Absolute,0.06,1,Audited
+HCI,2020,0.187,0.184,0,12,Standard,0.015,0.20,Absolute,0.06,1,Audited
+HCI,2021,0.223,0.287,0,12,Standard,0.015,0.20,Absolute,0.06,1,Audited
+HCI,2022,-0.108,-0.182,0,12,Standard,0.015,0.20,Absolute,0.06,1,Audited
+HCI,2023,0.154,0.265,1,9,Standard,0.015,0.20,Absolute,0.06,1,Unaudited
+Global_Macro,2018,-0.031,-0.044,0,12,Standard,0.020,0.00,None,0.00,0,Audited
+Global_Macro,2019,0.098,0.315,0,12,Standard,0.020,0.00,None,0.00,0,Audited
+Global_Macro,2020,0.143,0.184,0,12,Standard,0.020,0.00,None,0.00,0,Audited
+Global_Macro,2021,0.067,0.287,0,12,Standard,0.020,0.00,None,0.00,0,Audited
+Global_Macro,2022,0.022,-0.182,0,12,Standard,0.020,0.00,None,0.00,0,Audited
+Global_Macro,2023,0.089,0.265,1,9,Standard,0.020,0.00,None,0.00,0,Unaudited
