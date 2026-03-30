@@ -20,6 +20,69 @@ LegacyFormat = Literal["legacy_annual", "monthly_wide"]
 _REQUIRED_LEGACY_COLS = {"Fund", "Year", "Fund_Return"}
 
 
+def _build_legacy_assumptions_summary(
+    *,
+    risk_free_rate: float,
+    has_partial_years: bool,
+    has_spx: bool,
+) -> tuple[dict[str, Any], pd.DataFrame]:
+    assumptions = {
+        "cpi": 0.03,
+        "risk_free_rate": risk_free_rate,
+        "mar": 0.0,
+        "ips_target_spread": 0.06,
+    }
+    summary = pd.DataFrame(
+        [
+            {
+                "Assumption": "CPI assumption",
+                "Value": assumptions["cpi"],
+                "Status": "Placeholder",
+                "Source": "Parity memo; workbook Inputs sheet not yet confirmed",
+            },
+            {
+                "Assumption": "IPS target spread",
+                "Value": assumptions["ips_target_spread"],
+                "Status": "Documented",
+                "Source": "Parity memo target is CPI + 6%",
+            },
+            {
+                "Assumption": "Risk-free rate",
+                "Value": assumptions["risk_free_rate"],
+                "Status": "User setting",
+                "Source": "Streamlit sidebar input applied to annual Sharpe/Sortino",
+            },
+            {
+                "Assumption": "MAR",
+                "Value": assumptions["mar"],
+                "Status": "Default",
+                "Source": "Downside deviation / Sortino currently use MAR = 0.0",
+            },
+            {
+                "Assumption": "Partial-year handling",
+                "Value": "Included using Months_In_Period"
+                if has_partial_years
+                else "Full-year rows only in sample",
+                "Status": "Implemented",
+                "Source": "CAGR total years = sum(Months_In_Period / 12)",
+            },
+            {
+                "Assumption": "Benchmark source",
+                "Value": "SPX_Return column" if has_spx else "No benchmark column supplied",
+                "Status": "Input-derived",
+                "Source": "Legacy upload provides annual SPX rows when present",
+            },
+            {
+                "Assumption": "Fee treatment",
+                "Value": "Gross / pre-fee returns",
+                "Status": "Placeholder",
+                "Source": "Fee engine not implemented in MVP",
+            },
+        ]
+    )
+    return assumptions, summary
+
+
 def read_uploaded_frame(source: str | Path | IO) -> pd.DataFrame:
     """Read an uploaded CSV/Excel file without applying shape-specific transforms."""
     if isinstance(source, (str, Path)):
@@ -59,6 +122,7 @@ def build_legacy_analysis(
         ]
     all_metrics: dict[str, dict[str, Any]] = {}
     comparison_rows: dict[str, dict[str, Any]] = {}
+    has_partial_years = bool(meta.get("Is_Partial_Year", pd.Series(dtype=int)).fillna(0).astype(int).eq(1).any())
 
     for fund in returns_wide.columns:
         series = returns_wide[fund].dropna()
@@ -93,17 +157,19 @@ def build_legacy_analysis(
                 "fund_total_years": comparison.get("total_years"),
             }
 
+    assumptions, assumptions_df = _build_legacy_assumptions_summary(
+        risk_free_rate=risk_free_rate,
+        has_partial_years=has_partial_years,
+        has_spx=benchmark_series is not None,
+    )
+
     return {
         "returns_df": returns_wide.join(benchmark_wide, how="left") if not benchmark_wide.empty else returns_wide,
         "raw_data_df": raw_data_df,
         "all_metrics": all_metrics,
         "benchmark_comparison_df": pd.DataFrame(comparison_rows).T if comparison_rows else None,
-        "assumptions": {
-            "cpi": 0.03,
-            "risk_free_rate": risk_free_rate,
-            "mar": 0.0,
-            "ips_target_spread": 0.06,
-        },
+        "assumptions": assumptions,
+        "assumptions_df": assumptions_df,
         "has_spx": benchmark_series is not None,
         "fund_count": len(returns_wide.columns),
         "row_count": len(returns_wide),

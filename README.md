@@ -67,7 +67,9 @@ The Streamlit UI now auto-detects this schema by column names, routes it through
 Legacy annual exports now generate a workbook-oriented report:
 - `Comparison` sheet with fund vs SPX annual comparison fields and IPS pass/fail flags
 - `Raw Data` sheet with the annual rows used in the analysis
-- `Assumptions` sheet with current CPI / risk-free / MAR / IPS spread placeholders
+- `Assumptions` sheet with current CPI / risk-free / MAR placeholders plus parity notes
+  (status/source columns call out what is confirmed vs still placeholder, including
+  partial-year handling and gross/pre-fee treatment)
 
 Fixtures:
 - `tests/fixtures/sample_returns.csv`

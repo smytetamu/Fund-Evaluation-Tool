@@ -101,6 +101,12 @@ def export_legacy_report_to_excel(
             assumptions_export = pd.DataFrame(
                 [{"Assumption": key, "Value": value} for key, value in assumptions.items()]
             )
+    if assumptions_export is not None and not assumptions_export.empty:
+        preferred_cols = [
+            col for col in ["Assumption", "Value", "Status", "Source"] if col in assumptions_export.columns
+        ]
+        remaining_cols = [col for col in assumptions_export.columns if col not in preferred_cols]
+        assumptions_export = assumptions_export[preferred_cols + remaining_cols]
 
     is_path = isinstance(output, (str, Path))
     if is_path:

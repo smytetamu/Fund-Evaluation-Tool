@@ -43,6 +43,7 @@ if uploaded:
     benchmark_comparison_df = None
     raw_data_df = None
     legacy_assumptions = None
+    legacy_assumptions_df = None
     export_file_name = "fund_report.xlsx"
 
     if input_format == "legacy_annual":
@@ -55,6 +56,7 @@ if uploaded:
         numeric_cols = [c for c in df.select_dtypes("number").columns.tolist() if c != "SPX"]
         raw_data_df = legacy_result["raw_data_df"]
         legacy_assumptions = legacy_result["assumptions"]
+        legacy_assumptions_df = legacy_result["assumptions_df"]
         export_file_name = "fund_legacy_report.xlsx"
 
         st.success(
@@ -86,7 +88,20 @@ if uploaded:
             st.dataframe(display_df, use_container_width=True)
             st.caption("Annual comparison aligns each fund with the shared SPX annual series and highlights CAGR, excess CAGR, and IPS flags.")
 
-        export_header = "4. Export" if legacy_result["has_spx"] else "3. Export"
+        assumptions_header = "4. Assumptions & workbook parity notes" if legacy_result["has_spx"] else "3. Assumptions & workbook parity notes"
+        st.header(assumptions_header)
+        st.warning(
+            "Legacy annual results still rely on a few explicit MVP assumptions. "
+            "Treat these as demo-safe placeholders until the workbook Inputs sheet is confirmed."
+        )
+        if legacy_assumptions_df is not None and not legacy_assumptions_df.empty:
+            st.dataframe(legacy_assumptions_df, use_container_width=True)
+            st.caption(
+                "Most important caveats today: CPI is still a placeholder, partial years use Months_In_Period in CAGR, "
+                "and returns are treated as gross/pre-fee."
+            )
+
+        export_header = "5. Export" if legacy_result["has_spx"] else "4. Export"
     else:
         # Pass the UploadedFile directly — loader now handles file-like objects
         monthly_buffer = io.BytesIO(uploaded_bytes)
@@ -166,7 +181,7 @@ if uploaded:
             raw_data_df=raw_data_df if raw_data_df is not None else pd.DataFrame(),
             output=excel_buf,
             comparison_df=benchmark_comparison_df,
-            assumptions=legacy_assumptions,
+            assumptions=legacy_assumptions_df if legacy_assumptions_df is not None else legacy_assumptions,
         )
     else:
         export_to_excel(all_metrics, excel_buf, benchmark_df=benchmark_comparison_df)

@@ -32,3 +32,23 @@ def test_build_legacy_analysis_includes_ips_and_spx_comparison():
     assert result["raw_data_df"] is not None
     assert {"Fund", "Year", "Fund_Return", "SPX_Return"}.issubset(result["raw_data_df"].columns)
     assert result["assumptions"]["cpi"] == 0.03
+    assert result["assumptions_df"] is not None
+    assert {"Assumption", "Value", "Status", "Source"}.issubset(result["assumptions_df"].columns)
+    fee_row = result["assumptions_df"].loc[
+        result["assumptions_df"]["Assumption"] == "Fee treatment"
+    ].iloc[0]
+    assert fee_row["Value"] == "Gross / pre-fee returns"
+
+
+def test_build_legacy_analysis_marks_partial_year_handling_in_assumptions():
+    result = build_legacy_analysis(FIXTURE, risk_free_rate=0.04)
+
+    partial_year_row = result["assumptions_df"].loc[
+        result["assumptions_df"]["Assumption"] == "Partial-year handling"
+    ].iloc[0]
+    risk_free_row = result["assumptions_df"].loc[
+        result["assumptions_df"]["Assumption"] == "Risk-free rate"
+    ].iloc[0]
+
+    assert partial_year_row["Value"] == "Included using Months_In_Period"
+    assert risk_free_row["Value"] == 0.04
