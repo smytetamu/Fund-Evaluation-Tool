@@ -1,6 +1,7 @@
 """Fund Evaluation Tool — Streamlit entrypoint."""
 
 import io
+import os
 
 import pandas as pd
 import streamlit as st
@@ -13,6 +14,11 @@ from fund_evaluation_tool.app_logic import (
 )
 from fund_evaluation_tool.export import export_legacy_report_to_excel, export_to_excel
 from fund_evaluation_tool.ingestion import load_fund_data
+from fund_evaluation_tool.ingestion.pdf_extractor import (
+    extract_fund_data_from_pdf,
+    rows_to_legacy_csv_bytes,
+    _LEGACY_COLUMNS,
+)
 from fund_evaluation_tool.metrics import compute_metrics
 from fund_evaluation_tool.scenarios import run_scenario
 
@@ -26,6 +32,74 @@ with st.sidebar:
         "Risk-free rate (annualised)", value=0.04, step=0.005, format="%.3f"
     )
     scenario = st.selectbox("Scenario", ["full", "crisis_2008", "covid_2020"])
+
+# ── PDF Import ────────────────────────────────────────────────────────────────
+with st.expander("📄 Import from Fund Document (PDF)", expanded=False):
+    st.markdown(
+        "Upload a fund tear sheet, quarterly letter, or performance report PDF. "
+        "Claude AI will extract the fund performance data automatically. "
+        "Review and edit the results, then download as CSV to use in the analysis below."
+    )
+
+    pdf_api_key = st.text_input(
+        "Anthropic API key",
+        value=os.environ.get("ANTHROPIC_API_KEY", ""),
+        type="password",
+        help="Required to call Claude for PDF extraction. Set ANTHROPIC_API_KEY env var to pre-fill.",
+    )
+
+    uploaded_pdf = st.file_uploader(
+        "Upload PDF fund document",
+        type=["pdf"],
+        key="pdf_uploader",
+    )
+
+    if uploaded_pdf and st.button("Extract data from PDF", type="primary"):
+        if not pdf_api_key:
+            st.error("Please enter an Anthropic API key above.")
+        else:
+            with st.spinner("Sending PDF to Claude for extraction…"):
+                try:
+                    pdf_bytes = uploaded_pdf.getvalue()
+                    rows = extract_fund_data_from_pdf(pdf_bytes, api_key=pdf_api_key)
+                    st.session_state["pdf_extracted_rows"] = rows
+                    st.success(
+                        f"Extracted {len(rows)} row(s) from **{uploaded_pdf.name}**. "
+                        "Review below and correct any errors before downloading."
+                    )
+                except ValueError as exc:
+                    st.error(f"Extraction failed: {exc}")
+                    st.session_state.pop("pdf_extracted_rows", None)
+
+    if "pdf_extracted_rows" in st.session_state:
+        raw_rows = st.session_state["pdf_extracted_rows"]
+        extracted_df = pd.DataFrame(raw_rows, columns=_LEGACY_COLUMNS)
+
+        st.subheader("Extracted data — review & edit")
+        st.caption(
+            "Returns are decimals (0.15 = 15%). Edit any cell before downloading. "
+            "Add or delete rows as needed."
+        )
+
+        edited_df = st.data_editor(
+            extracted_df,
+            num_rows="dynamic",
+            use_container_width=True,
+            key="pdf_editor",
+        )
+
+        csv_bytes = rows_to_legacy_csv_bytes(edited_df.to_dict("records"))
+        st.download_button(
+            label="📥 Download extracted data as CSV",
+            data=csv_bytes,
+            file_name="extracted_fund_data.csv",
+            mime="text/csv",
+            help="Download the reviewed data, then upload it in the section below to run the analysis.",
+        )
+
+        st.info(
+            "After downloading, upload the CSV in **'1. Upload Fund Data'** below to run metrics and analysis."
+        )
 
 # ── Upload ────────────────────────────────────────────────────────────────────
 st.header("1. Upload Fund Data")
