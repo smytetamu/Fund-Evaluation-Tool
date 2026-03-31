@@ -63,6 +63,7 @@ def export_legacy_report_to_excel(
     output: Union[str, Path, IO] = "fund_evaluation_legacy_report.xlsx",
     comparison_df: pd.DataFrame | None = None,
     assumptions: dict[str, Any] | pd.DataFrame | None = None,
+    fund_details: list | None = None,
 ) -> Union[Path, IO]:
     """Write a legacy annual report workbook for demo/reporting flows.
 
@@ -112,6 +113,18 @@ def export_legacy_report_to_excel(
     if is_path:
         output = Path(output)
 
+    # Build Fund Details sheet if provided
+    fund_details_export: pd.DataFrame | None = None
+    if fund_details:
+        fd_rows = []
+        for fd in fund_details:
+            if hasattr(fd, "to_dict"):
+                fd_rows.append(fd.to_dict())
+            elif isinstance(fd, dict):
+                fd_rows.append(fd)
+        if fd_rows:
+            fund_details_export = _friendly_columns(pd.DataFrame(fd_rows))
+
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         comparison_export.to_excel(writer, sheet_name="Comparison", index=False)
         _auto_fit_worksheet(writer.sheets["Comparison"])
@@ -122,5 +135,9 @@ def export_legacy_report_to_excel(
         if assumptions_export is not None and not assumptions_export.empty:
             assumptions_export.to_excel(writer, sheet_name="Assumptions", index=False)
             _auto_fit_worksheet(writer.sheets["Assumptions"])
+
+        if fund_details_export is not None and not fund_details_export.empty:
+            fund_details_export.to_excel(writer, sheet_name="Fund Details", index=False)
+            _auto_fit_worksheet(writer.sheets["Fund Details"])
 
     return output.resolve() if is_path else output

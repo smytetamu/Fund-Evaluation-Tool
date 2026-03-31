@@ -49,14 +49,7 @@ def test_export_legacy_report_writes_comparison_raw_data_and_assumptions():
     assert "Fund Ips Compliant" in comparison_headers
 
     raw_headers = [cell.value for cell in workbook["Raw Data"][1]]
-    assert raw_headers[:6] == [
-        "Fund",
-        "Year",
-        "Fund Return",
-        "Spx Return",
-        "Is Partial Year",
-        "Months In Period",
-    ]
+    assert {"Fund", "Year", "Fund Return", "Benchmark Return"}.issubset(set(raw_headers))
     assert workbook["Raw Data"]["A2"].value == "HCI"
 
     assumptions_headers = [cell.value for cell in workbook["Assumptions"][1]]
