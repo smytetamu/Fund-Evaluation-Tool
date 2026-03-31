@@ -7,10 +7,14 @@ import io
 import pandas as pd
 import streamlit as st
 
+import plotly.express as px
+
 from fund_evaluation_tool.app_logic import (
     DEFAULT_RISK_FREE,
     build_legacy_analysis,
     build_monthly_benchmark_analysis,
+    compute_dashboard_summary,
+    compute_wealth_growth,
     detect_input_format,
     detect_fund_names_from_legacy,
     read_uploaded_frame,
@@ -183,43 +187,143 @@ if uploaded:
                     )
                 config.set(det)
 
-        # ── Annual Metrics ─────────────────────────────────────────────────────
-        st.header("2. Annual Metrics")
         included = config.included_funds() or list(all_metrics.keys())
         filtered_metrics = {f: v for f, v in all_metrics.items() if f in included}
+
+        # ── Dashboard summary ─────────────────────────────────────────────────
+        st.header("2. Dashboard Summary")
+        summary = compute_dashboard_summary(all_metrics, included, benchmark_comparison_df)
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("Active Funds", summary["active_funds"])
+        if summary["best_cagr_val"] is not None:
+            c2.metric(
+                "Best CAGR",
+                f"{summary['best_cagr_val']:.1%}",
+                delta=summary["best_cagr_fund"],
+                delta_color="off",
+            )
+        if summary["best_sharpe_val"] is not None:
+            c3.metric(
+                "Best Sharpe",
+                f"{summary['best_sharpe_val']:.2f}",
+                delta=summary["best_sharpe_fund"],
+                delta_color="off",
+            )
+        c4.metric("Meeting IPS Target", summary["count_ips_compliant"])
+        if summary["has_benchmark"]:
+            c5.metric("Beating Benchmark", summary["count_beating_benchmark"])
+
+        # ── Wealth growth chart ────────────────────────────────────────────────
+        st.subheader("Wealth Growth ($1M starting capital)")
+        returns_wide_for_chart = legacy_result["returns_df"][
+            [c for c in legacy_result["returns_df"].columns if c in included]
+        ]
+        benchmark_series_for_chart = None
+        if has_benchmark and benchmark_name and benchmark_name not in included:
+            bm_col = benchmark_name
+            if bm_col in legacy_result["returns_df"].columns:
+                benchmark_series_for_chart = legacy_result["returns_df"][bm_col].rename(bm_col)
+        wealth_df = compute_wealth_growth(
+            returns_wide_for_chart,
+            benchmark_series=benchmark_series_for_chart,
+        )
+        wealth_long = wealth_df.reset_index().melt(id_vars="index", var_name="Fund", value_name="Value ($)")
+        wealth_long = wealth_long.rename(columns={"index": "Year"})
+        fig = px.line(
+            wealth_long,
+            x="Year",
+            y="Value ($)",
+            color="Fund",
+            labels={"Value ($)": "Portfolio Value ($)", "Year": ""},
+            template="simple_white",
+        )
+        fig.update_layout(legend_title_text="", hovermode="x unified")
+        fig.update_yaxes(tickformat="$,.0f")
+        st.plotly_chart(fig, use_container_width=True)
+
+        # ── Annual Metrics ─────────────────────────────────────────────────────
+        st.header("3. Annual Metrics")
         if not filtered_metrics:
             st.warning("No included funds found. Check Fund Details configuration above.")
         else:
             metrics_df = pd.DataFrame(filtered_metrics).T
             metrics_df.index.name = "Fund"
             metrics_df.columns = [c.replace("_", " ").title() for c in metrics_df.columns]
-            st.dataframe(metrics_df, use_container_width=True)
+
+            def _color_ips_col(series: pd.Series) -> list[str]:
+                return [
+                    "background-color: #d4edda" if v is True else (
+                        "background-color: #f8d7da" if v is False else ""
+                    )
+                    for v in series
+                ]
+
+            styler = metrics_df.style.format(
+                {c: "{:.4f}" for c in metrics_df.select_dtypes("number").columns},
+                na_rep="—",
+            )
+            if "Ips Compliant" in metrics_df.columns:
+                styler = styler.apply(_color_ips_col, subset=["Ips Compliant"])
+            st.dataframe(styler, use_container_width=True)
 
             if "Ips Compliant" in metrics_df.columns:
                 ips_df = metrics_df[
                     [c for c in ["Cagr", "Ips Target", "Ips Delta", "Ips Compliant"] if c in metrics_df.columns]
                 ].copy()
                 st.subheader("IPS Compliance")
-                st.dataframe(ips_df, use_container_width=True)
+                ips_styler = ips_df.style.format(
+                    {c: "{:.4f}" for c in ips_df.select_dtypes("number").columns},
+                    na_rep="—",
+                )
+                if "Ips Compliant" in ips_df.columns:
+                    ips_styler = ips_styler.apply(_color_ips_col, subset=["Ips Compliant"])
+                st.dataframe(ips_styler, use_container_width=True)
 
         # ── Benchmark comparison ───────────────────────────────────────────────
         if has_benchmark and benchmark_comparison_df is not None and not benchmark_comparison_df.empty:
             bmark_label = benchmark_name or "benchmark"
-            st.header(f"3. Fund vs {bmark_label}")
+            st.header(f"4. Fund vs {bmark_label}")
             display_df = benchmark_comparison_df.loc[
                 benchmark_comparison_df.index.isin(included)
             ].copy()
             display_df.index.name = "Fund"
             display_df.columns = [c.replace("_", " ").title() for c in display_df.columns]
-            st.dataframe(display_df, use_container_width=True)
+
+            def _color_excess_col(series: pd.Series) -> list[str]:
+                out = []
+                for v in series:
+                    try:
+                        fv = float(v)
+                        if fv > 0:
+                            out.append("background-color: #d4edda")
+                        elif fv < 0:
+                            out.append("background-color: #f8d7da")
+                        else:
+                            out.append("")
+                    except (TypeError, ValueError):
+                        out.append("")
+                return out
+
+            bm_styler = display_df.style.format(
+                {c: "{:.4f}" for c in display_df.select_dtypes("number").columns},
+                na_rep="—",
+            )
+            for col in ["Excess Cagr", "Fund Ips Compliant"]:
+                if col not in display_df.columns:
+                    continue
+                if col == "Excess Cagr":
+                    bm_styler = bm_styler.apply(_color_excess_col, subset=[col])
+                elif col == "Fund Ips Compliant":
+                    bm_styler = bm_styler.apply(_color_ips_col, subset=[col])
+            st.dataframe(bm_styler, use_container_width=True)
             st.caption(
                 f"Annual comparison aligned to common window. "
                 f"Benchmark: **{bmark_label}**. "
-                "Highlights CAGR, excess CAGR, and IPS compliance."
+                "Green = beating benchmark / IPS-compliant; red = below."
             )
 
         # ── Assumptions ────────────────────────────────────────────────────────
-        assumptions_header_num = "4" if has_benchmark else "3"
+        assumptions_header_num = "5" if has_benchmark else "4"
         st.header(f"{assumptions_header_num}. Assumptions & workbook parity notes")
         if legacy_assumptions_df is not None and not legacy_assumptions_df.empty:
             st.dataframe(legacy_assumptions_df, use_container_width=True)

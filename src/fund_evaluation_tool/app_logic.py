@@ -265,3 +265,89 @@ def build_monthly_benchmark_analysis(
     benchmark_col: str,
 ) -> pd.DataFrame:
     return compute_benchmark_comparison(returns_df, benchmark_col)
+
+
+def compute_dashboard_summary(
+    all_metrics: dict[str, dict[str, Any]],
+    included_funds: list[str],
+    benchmark_comparison_df: pd.DataFrame | None = None,
+) -> dict[str, Any]:
+    """Return summary stats for the dashboard cards.
+
+    Parameters
+    ----------
+    all_metrics:
+        Per-fund metric dicts from :func:`build_legacy_analysis`.
+    included_funds:
+        Fund names currently marked as included in ``FundDetailsConfig``.
+    benchmark_comparison_df:
+        Optional benchmark comparison DataFrame (indexed by fund name).
+    """
+    filtered = {f: m for f, m in all_metrics.items() if f in included_funds}
+    if not filtered:
+        return {
+            "active_funds": 0,
+            "best_cagr_fund": None,
+            "best_cagr_val": None,
+            "best_sharpe_fund": None,
+            "best_sharpe_val": None,
+            "count_ips_compliant": 0,
+            "count_beating_benchmark": 0,
+            "has_benchmark": False,
+        }
+
+    best_cagr = max(filtered.items(), key=lambda kv: kv[1].get("cagr") or float("-inf"))
+    best_sharpe = max(filtered.items(), key=lambda kv: kv[1].get("sharpe_ratio") or float("-inf"))
+    count_ips = sum(1 for m in filtered.values() if m.get("ips_compliant"))
+
+    count_beating = 0
+    has_benchmark = False
+    if benchmark_comparison_df is not None and not benchmark_comparison_df.empty:
+        has_benchmark = True
+        bm = benchmark_comparison_df.loc[benchmark_comparison_df.index.isin(included_funds)]
+        if "excess_cagr" in bm.columns:
+            count_beating = int((bm["excess_cagr"] > 0).sum())
+
+    return {
+        "active_funds": len(filtered),
+        "best_cagr_fund": best_cagr[0],
+        "best_cagr_val": best_cagr[1].get("cagr"),
+        "best_sharpe_fund": best_sharpe[0],
+        "best_sharpe_val": best_sharpe[1].get("sharpe_ratio"),
+        "count_ips_compliant": count_ips,
+        "count_beating_benchmark": count_beating,
+        "has_benchmark": has_benchmark,
+    }
+
+
+def compute_wealth_growth(
+    returns_wide: pd.DataFrame,
+    benchmark_series: pd.Series | None = None,
+    starting_value: float = 1_000_000,
+) -> pd.DataFrame:
+    """Compute cumulative wealth growth from annual return series.
+
+    Missing / NaN periods are treated as 0% return (no change in value).
+    Each fund is compounded from the ``starting_value``.
+
+    Parameters
+    ----------
+    returns_wide:
+        Wide DataFrame with DatetimeIndex and one column per fund.
+    benchmark_series:
+        Optional benchmark return series to overlay.
+    starting_value:
+        Starting portfolio value (default $1,000,000).
+    """
+    combined = returns_wide.copy()
+    if benchmark_series is not None:
+        bname = benchmark_series.name if benchmark_series.name else "Benchmark"
+        combined[bname] = benchmark_series
+
+    # Prepend a synthetic row at year-1 so the chart starts at starting_value
+    first_year = combined.index.min()
+    synthetic_index = pd.DatetimeIndex([first_year - pd.DateOffset(years=1)])
+    start_row = pd.DataFrame(0.0, index=synthetic_index, columns=combined.columns)
+    combined = pd.concat([start_row, combined])
+
+    return (1 + combined.fillna(0)).cumprod() * starting_value
