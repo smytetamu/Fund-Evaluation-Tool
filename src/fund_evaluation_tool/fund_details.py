@@ -51,6 +51,7 @@ class FundDetails:
     hurdle_rate_pct: float | None = None  # e.g. 0.08 for 8% hurdle
     high_water_mark: bool = False
     liquidity_notes: str = ""
+    source_note: str = ""
 
     def to_dict(self) -> dict:
         return asdict(self)

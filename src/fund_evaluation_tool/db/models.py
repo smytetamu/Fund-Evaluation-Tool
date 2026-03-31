@@ -44,3 +44,4 @@ class FundDetailsModel(Base):
     hurdle_rate_pct: Mapped[float | None] = mapped_column(Float)
     high_water_mark: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     liquidity_notes: Mapped[str | None] = mapped_column(String(1000))
+    source_note: Mapped[str | None] = mapped_column(String(2000))

@@ -33,6 +33,97 @@ if "fund_details_config" not in st.session_state:
     st.session_state.fund_details_config = FundDetailsConfig()
 if "anchor_window" not in st.session_state:
     st.session_state.anchor_window = AnchorWindow()
+if "pasted_raw_data" not in st.session_state:
+    st.session_state.pasted_raw_data = ""
+
+# ── Instructions panel ────────────────────────────────────────────────────────
+with st.expander("ℹ️ How to Use This Tool", expanded=False):
+    st.markdown("""
+**Step 1 — Prepare your fund data**
+
+You need performance data in one of two formats:
+- **Legacy annual format** — long CSV with columns: `Fund`, `Year`, `Fund_Return`, `SPX_Return` (optional), `Months_In_Period` (optional)
+- **Monthly wide format** — wide CSV with a `date` column plus one decimal-return column per fund
+
+If you have PDF tear-sheets or reports, use the **AI Extraction Prompt Template** (below) with Claude to convert them into structured CSV rows automatically.
+
+**Step 2 — Import data**
+
+- **Upload a file** (CSV or Excel) using the Upload tab, or
+- **Paste CSV rows** directly into the Paste tab — no file needed
+
+**Step 3 — Configure fund details** *(legacy format only)*
+
+After import, open **Fund Details Configuration** to set strategy type, return type, fee terms, and source notes per fund.
+You can also bulk-import fund metadata from AI-extracted CSV using the **Import Fund Details CSV** section inside that panel.
+
+**Step 4 — Review analysis**
+
+- **Dashboard summary** — active fund count, best CAGR/Sharpe, IPS compliance, benchmark-beating count
+- **Wealth Growth chart** — cumulative $1M growth across all included funds
+- **Annual Metrics** — CAGR, Sharpe, Sortino, IPS target compliance
+- **Benchmark Comparison** — excess CAGR and IPS status vs selected benchmark
+
+**Step 5 — Export**
+
+Download a formatted Excel report with Comparison, Raw Data, Assumptions, and Fund Details sheets.
+""")
+
+# ── AI extraction prompt template ─────────────────────────────────────────────
+with st.expander("🤖 AI Extraction Prompt Template", expanded=False):
+    st.caption(
+        "Copy either prompt below and use it with Claude (claude.ai or API) "
+        "to extract structured data from fund PDFs. Paste the output into the **Paste** tab."
+    )
+
+    st.markdown("**Performance Data (Raw_Data)**")
+    st.code(
+        """\
+You are a financial data extraction assistant. Extract fund performance data from the \
+provided document and output it in CSV format with these exact columns:
+
+Fund,Year,Fund_Return,SPX_Return,Months_In_Period
+
+Rules:
+- Fund: the fund name (keep consistent across all rows for the same fund)
+- Year: 4-digit calendar year (e.g. 2023)
+- Fund_Return: annual return as a decimal (e.g. 0.15 for 15%, -0.08 for -8%)
+- SPX_Return: S&P 500 return for that year as a decimal (leave blank if not in document)
+- Months_In_Period: number of months in the period (12 for full years; fewer for partial years)
+
+Output only the CSV rows with the header line and no other text.
+
+Example output:
+Fund,Year,Fund_Return,SPX_Return,Months_In_Period
+MyFund,2020,0.152,0.184,12
+MyFund,2021,0.089,0.287,12
+MyFund,2022,-0.043,-0.181,12""",
+        language="text",
+    )
+
+    st.markdown("**Fund Metadata (Fund_Details)**")
+    st.code(
+        """\
+You are a financial data extraction assistant. Extract fund configuration metadata from \
+the provided document and output it in CSV format with these exact columns:
+
+Fund,Strategy,ReturnType,ManagementFee,PerformanceFee,HurdleRate,HWM,LiquidityNotes,SourceNote
+
+Rules:
+- Fund: must match the name used in performance data exactly
+- Strategy: one of [Equity Long/Short, Equity Long Only, Fixed Income, Multi-Strategy, \
+Global Macro, Event Driven, Real Assets, Private Equity, Other]
+- ReturnType: Gross or Net
+- ManagementFee: as decimal (0.02 = 2%); leave blank if unknown
+- PerformanceFee: as decimal (0.20 = 20%); leave blank if unknown
+- HurdleRate: as decimal (0.08 = 8%); leave blank if unknown
+- HWM: TRUE or FALSE
+- LiquidityNotes: brief text on redemption terms (e.g. "Quarterly with 45-day notice")
+- SourceNote: source document name or date (e.g. "Q4 2023 Tear Sheet")
+
+Output only the CSV rows with the header line and no other text.""",
+        language="text",
+    )
 
 # ── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -46,19 +137,57 @@ with st.sidebar:
     )
     scenario = st.selectbox("Scenario", ["full", "crisis_2008", "covid_2020"])
 
-# ── Upload ────────────────────────────────────────────────────────────────────
-st.header("1. Upload Fund Data")
+# ── Input Fund Data ───────────────────────────────────────────────────────────
+st.header("1. Input Fund Data")
 st.caption(
-    "CSV with a `date` column + one numeric column per fund (monthly returns as decimals, e.g. 0.01 = 1%)."
-    " Or upload legacy annual format (columns: `Fund`, `Year`, `Fund_Return`)."
+    "Upload a file **or** paste AI-extracted CSV rows. "
+    "Legacy annual format: `Fund, Year, Fund_Return` columns. "
+    "Monthly format: `date` + one column per fund (decimal returns)."
 )
-uploaded = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
 
-if uploaded:
-    uploaded_bytes = uploaded.getvalue()
+upload_tab, paste_tab = st.tabs(["📁 Upload File", "📋 Paste CSV"])
 
-    preview_buffer = io.BytesIO(uploaded_bytes)
-    preview_buffer.name = uploaded.name
+with upload_tab:
+    uploaded = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
+
+with paste_tab:
+    st.caption(
+        "Paste rows in legacy annual format (Fund, Year, Fund_Return, ...). "
+        "Use the AI Extraction Prompt Template above to generate these rows from a PDF."
+    )
+    pasted_text = st.text_area(
+        "Paste CSV rows here",
+        height=180,
+        placeholder=(
+            "Fund,Year,Fund_Return,SPX_Return,Months_In_Period\n"
+            "FundA,2020,0.15,0.18,12\n"
+            "FundA,2021,0.08,0.29,12"
+        ),
+        key="paste_text_area",
+    )
+    if st.button("Load Pasted Data", type="primary"):
+        st.session_state.pasted_raw_data = pasted_text.strip()
+        st.rerun()
+    if st.session_state.pasted_raw_data:
+        st.success("Pasted data loaded — scroll down to see analysis.")
+        if st.button("Clear pasted data"):
+            st.session_state.pasted_raw_data = ""
+            st.rerun()
+
+# ── Determine data source ─────────────────────────────────────────────────────
+_pasted = st.session_state.get("pasted_raw_data", "").strip()
+_has_data = bool(uploaded or _pasted)
+
+if _has_data:
+    if uploaded:
+        raw_bytes = uploaded.getvalue()
+        file_name = uploaded.name
+    else:
+        raw_bytes = _pasted.encode("utf-8")
+        file_name = "pasted_data.csv"
+
+    preview_buffer = io.BytesIO(raw_bytes)
+    preview_buffer.name = file_name
     preview_df = read_uploaded_frame(preview_buffer)
     input_format = detect_input_format(preview_df.columns)
 
@@ -70,8 +199,8 @@ if uploaded:
 
     if input_format == "legacy_annual":
         # ── Detect fund names for sidebar controls ────────────────────────────
-        name_buf = io.BytesIO(uploaded_bytes)
-        name_buf.name = uploaded.name
+        name_buf = io.BytesIO(raw_bytes)
+        name_buf.name = file_name
         fund_names = detect_fund_names_from_legacy(name_buf)
 
         # ── Sync FundDetailsConfig with current fund names ────────────────────
@@ -114,8 +243,8 @@ if uploaded:
         benchmark_fund_arg = None if benchmark_sel == "(auto / SPX)" else benchmark_sel
 
         # ── Run analysis ──────────────────────────────────────────────────────
-        legacy_buffer = io.BytesIO(uploaded_bytes)
-        legacy_buffer.name = uploaded.name
+        legacy_buffer = io.BytesIO(raw_bytes)
+        legacy_buffer.name = file_name
         legacy_result = build_legacy_analysis(
             legacy_buffer,
             risk_free_rate=risk_free,
@@ -149,6 +278,73 @@ if uploaded:
                 "Configure per-fund metadata. Changes persist in session state. "
                 "Only included funds are shown in comparison tables."
             )
+
+            # ── Bulk import from AI-extracted CSV ─────────────────────────────
+            with st.expander("📥 Import Fund Details CSV", expanded=False):
+                st.caption(
+                    "Paste AI-extracted Fund Details CSV (columns: Fund, Strategy, ReturnType, "
+                    "ManagementFee, PerformanceFee, HurdleRate, HWM, LiquidityNotes, SourceNote). "
+                    "Use the AI Extraction Prompt Template above to generate this."
+                )
+                fd_paste = st.text_area(
+                    "Paste Fund Details CSV",
+                    height=120,
+                    placeholder=(
+                        "Fund,Strategy,ReturnType,ManagementFee,PerformanceFee,HurdleRate,HWM,LiquidityNotes,SourceNote\n"
+                        "FundA,Equity Long/Short,Net,0.02,0.20,0.08,TRUE,Quarterly with 45-day notice,Q4 2023 Tear Sheet"
+                    ),
+                    key="fd_paste_area",
+                )
+                if st.button("Apply Fund Details CSV"):
+                    try:
+                        fd_df = pd.read_csv(io.StringIO(fd_paste.strip()))
+                        col_map = {c.lower().replace(" ", "_"): c for c in fd_df.columns}
+                        applied = 0
+                        for _, row in fd_df.iterrows():
+                            fname = str(row.get("Fund", row.get("fund", ""))).strip()
+                            if not fname or fname not in fund_names:
+                                continue
+                            det: FundDetails = config.get(fname)
+                            strategy_options = [
+                                "Equity Long/Short", "Equity Long Only", "Fixed Income",
+                                "Multi-Strategy", "Global Macro", "Event Driven",
+                                "Real Assets", "Private Equity", "Other",
+                            ]
+                            raw_strategy = str(row.get("Strategy", row.get("strategy", det.strategy_type))).strip()
+                            if raw_strategy in strategy_options:
+                                det.strategy_type = raw_strategy
+                            raw_rtype = str(row.get("ReturnType", row.get("returntype", det.return_type))).strip()
+                            if raw_rtype in ("Gross", "Net"):
+                                det.return_type = raw_rtype
+                            for fee_field, det_attr in [
+                                ("ManagementFee", "management_fee_pct"),
+                                ("managementfee", "management_fee_pct"),
+                                ("PerformanceFee", "performance_fee_pct"),
+                                ("performancefee", "performance_fee_pct"),
+                                ("HurdleRate", "hurdle_rate_pct"),
+                                ("hurdlerate", "hurdle_rate_pct"),
+                            ]:
+                                if fee_field in row.index:
+                                    try:
+                                        val = float(row[fee_field])
+                                        setattr(det, det_attr, val)
+                                    except (TypeError, ValueError):
+                                        pass
+                            hwm_raw = str(row.get("HWM", row.get("hwm", ""))).strip().upper()
+                            if hwm_raw in ("TRUE", "FALSE"):
+                                det.high_water_mark = hwm_raw == "TRUE"
+                            liq = str(row.get("LiquidityNotes", row.get("liquiditynotes", ""))).strip()
+                            if liq and liq.lower() != "nan":
+                                det.liquidity_notes = liq
+                            src = str(row.get("SourceNote", row.get("sourcenote", ""))).strip()
+                            if src and src.lower() != "nan":
+                                det.source_note = src
+                            config.set(det)
+                            applied += 1
+                        st.success(f"Applied fund details for {applied} fund(s). Scroll down to review.")
+                    except Exception as e:
+                        st.error(f"Could not parse Fund Details CSV: {e}")
+
             strategy_options = [
                 "Equity Long/Short", "Equity Long Only", "Fixed Income",
                 "Multi-Strategy", "Global Macro", "Event Driven",
@@ -157,7 +353,7 @@ if uploaded:
             for fname in fund_names:
                 det: FundDetails = config.get(fname)
                 st.markdown(f"**{fname}**")
-                cols = st.columns([1, 2, 1, 1, 3])
+                cols = st.columns([1, 2, 1, 1, 2, 3])
                 with cols[0]:
                     det.include = st.checkbox("Include", value=det.include, key=f"fd_include_{fname}")
                 with cols[1]:
@@ -184,6 +380,13 @@ if uploaded:
                         value=det.liquidity_notes,
                         key=f"fd_liq_{fname}",
                         placeholder="Liquidity notes…",
+                    )
+                with cols[5]:
+                    det.source_note = st.text_input(
+                        "Source note",
+                        value=det.source_note,
+                        key=f"fd_src_{fname}",
+                        placeholder="e.g. Q4 2023 Tear Sheet",
                     )
                 config.set(det)
 
@@ -336,8 +539,8 @@ if uploaded:
 
     else:
         # ── Monthly wide format ───────────────────────────────────────────────
-        monthly_buffer = io.BytesIO(uploaded_bytes)
-        monthly_buffer.name = uploaded.name
+        monthly_buffer = io.BytesIO(raw_bytes)
+        monthly_buffer.name = file_name
         df = load_fund_data(monthly_buffer)
         numeric_cols = df.select_dtypes("number").columns.tolist()
         st.success(f"Loaded {len(df)} rows, {len(numeric_cols)} fund(s).")
@@ -408,12 +611,14 @@ if uploaded:
 
     excel_buf = io.BytesIO()
     if input_format == "legacy_annual":
+        fund_details_list = st.session_state.fund_details_config.all_funds()
         export_legacy_report_to_excel(
             all_metrics,
             raw_data_df=raw_data_df if raw_data_df is not None else pd.DataFrame(),
             output=excel_buf,
             comparison_df=benchmark_comparison_df,
             assumptions=legacy_assumptions_df if legacy_assumptions_df is not None else legacy_assumptions,
+            fund_details=fund_details_list if fund_details_list else None,
         )
     else:
         export_to_excel(all_metrics, excel_buf, benchmark_df=benchmark_comparison_df)
@@ -426,7 +631,7 @@ if uploaded:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 else:
-    st.info("Upload a CSV or Excel file to get started.")
+    st.info("Upload a CSV or Excel file, or paste CSV rows in the Paste tab to get started.")
     with st.expander("Expected file format"):
         st.markdown("""
 **Monthly wide format:**
@@ -446,4 +651,5 @@ else:
 - Select any loaded fund column as **benchmark** — not limited to SPX
 - Use the **Comparison Window** sidebar to anchor all funds to a common start year
 - Configure per-fund metadata in the **Fund Details** expander
+- Use the **AI Extraction Prompt Template** above to extract data from PDFs with Claude
         """)
